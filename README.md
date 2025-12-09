@@ -27,8 +27,8 @@ Automatically sync your Spotify playlists to YouTube Music with a simple, easy-t
 ### 1️⃣ Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/spotify-ytmusic-sync.git
-cd spotify-ytmusic-sync
+git clone https://github.com/kunal-1320/SpotifytoYTMusicSync
+cd SpotifytoYTMusicSync
 pip install -r requirements.txt
 ```
 
@@ -306,4 +306,5 @@ Have questions? Open an issue on GitHub!
 ---
 
 **Made with ❤️ for music lovers who use both Spotify and YouTube Music**
+
 
