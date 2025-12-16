@@ -426,6 +426,135 @@ def view_ytmusic_playlists():
     pause()
 
 # =============================================================================
+# AUTO-CREATE YOUTUBE MUSIC PLAYLISTS
+# =============================================================================
+
+def auto_create_menu():
+    while True:
+        print_header("AUTO-CREATE YOUTUBE MUSIC PLAYLISTS")
+        
+        print_menu([
+            "Dry Run (Preview what would be created)",
+            "Create Playlists (Actual creation)",
+        ])
+        
+        choice = get_choice(2)
+        
+        if choice == 0:
+            break
+        elif choice == 1:
+            auto_create_ytm_playlists(dry_run=True)
+        elif choice == 2:
+            auto_create_ytm_playlists(dry_run=False)
+
+def auto_create_ytm_playlists(dry_run=False):
+    print_header("AUTO-CREATE YOUTUBE MUSIC PLAYLISTS" + (" (DRY RUN)" if dry_run else ""))
+    
+    if not check_spotify_status():
+        print("[X] Spotify not configured! Set it up first.")
+        pause()
+        return
+    
+    if not check_ytmusic_status():
+        print("[X] YouTube Music not configured! Set it up first.")
+        pause()
+        return
+    
+    try:
+        import importlib
+        import config
+        importlib.reload(config)
+        import spotipy
+        from spotipy.oauth2 import SpotifyOAuth
+        from ytmusicapi import YTMusic
+        
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=config.SPOTIFY_CLIENT_ID,
+            client_secret=config.SPOTIFY_CLIENT_SECRET,
+            redirect_uri=config.SPOTIFY_REDIRECT_URI,
+            scope="playlist-read-private playlist-read-collaborative"
+        ))
+        
+        if not dry_run:
+            ytm = YTMusic('browser_auth.json')
+        
+        current_mapping = config.PLAYLIST_MAPPING.copy()
+        new_mappings = {}
+        
+        print("Checking playlists...")
+        print()
+        
+        for sp_id in config.SPOTIFY_PLAYLIST_IDS:
+            if sp_id in current_mapping:
+                print(f"Skipping {sp_id}: already mapped.")
+                continue
+            
+            try:
+                pl = sp.playlist(sp_id)
+                if not isinstance(pl, dict):
+                    print(f"Skipping {sp_id}: invalid playlist data (not dict).")
+                    continue
+                name = pl['name']
+            except (TypeError, KeyError) as e:
+                print(f"Skipping {sp_id}: invalid playlist data ({e})")
+                continue
+            
+            safe_print(f"{'Would create' if dry_run else 'Creating'} playlist: {name}")
+            
+            if not dry_run:
+                yt_pl = ytm.create_playlist(
+                    title=name,
+                    description=f"Synced from Spotify: {name}",
+                    privacy_status='PRIVATE' if config.YTMUSIC_PLAYLIST_PRIVATE else 'PUBLIC'
+                )
+                
+                yt_id = yt_pl
+                new_mappings[sp_id] = yt_id
+                print(f"Created: {yt_id}")
+            else:
+                print("(Dry run - not created)")
+            print()
+        
+        if not dry_run and new_mappings:
+            # Update mapping
+            current_mapping.update(new_mappings)
+            
+            # Now update config.py
+            with open("config.py", "r") as f:
+                content = f.read()
+            
+            # Find PLAYLIST_MAPPING = { ... }
+            import re
+            pattern = r'(PLAYLIST_MAPPING = \{)(.*?)(\})'
+            match = re.search(pattern, content, re.DOTALL)
+            
+            if match:
+                prefix = match.group(1)
+                suffix = match.group(3)
+                # Construct new dict string
+                lines = [f'    "{k}": "{v}",' for k, v in current_mapping.items()]
+                new_dict_content = '\n'.join(lines)
+                new_mapping_str = prefix + '\n' + new_dict_content + '\n' + suffix
+                
+                content = content.replace(match.group(0), new_mapping_str)
+                
+                with open("config.py", "w") as f:
+                    f.write(content)
+                
+                print(f"\n[OK] Added {len(new_mappings)} new mappings!")
+            else:
+                print("[ERROR] Could not find PLAYLIST_MAPPING in config.py")
+        elif dry_run:
+            print(f"\n[Dry Run] Would add {len([sp_id for sp_id in config.SPOTIFY_PLAYLIST_IDS if sp_id not in current_mapping])} new mappings.")
+        else:
+            print("No new playlists to create.")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    pause()
+
+# =============================================================================
 # SYNC FUNCTIONS
 # =============================================================================
 
@@ -486,9 +615,10 @@ def main_menu():
             "Manage Playlists",
             "Setup Spotify",
             "Setup YouTube Music",
+            "Auto-create YouTube Music playlists from Spotify playlists",
         ])
         
-        choice = get_choice(5)
+        choice = get_choice(6)
         
         if choice == 0:
             print("\nGoodbye!")
@@ -514,6 +644,8 @@ def main_menu():
             setup_spotify()
         elif choice == 5:
             setup_ytmusic()
+        elif choice == 6:
+            auto_create_menu()
 
 # =============================================================================
 # ENTRY POINT
