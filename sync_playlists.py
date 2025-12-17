@@ -396,8 +396,12 @@ def sync_playlists(dry_run: bool = False):
         log("❌ Error: Please configure your Spotify credentials in config.py")
         return
     
-    if not config.SPOTIFY_PLAYLIST_IDS or "YOUR_" in config.SPOTIFY_PLAYLIST_IDS[0]:
-        log("❌ Error: Please add at least one Spotify playlist ID in config.py")
+    # Check if we have valid playlists to sync
+    has_mapping = hasattr(config, "PLAYLIST_MAPPING") and config.PLAYLIST_MAPPING
+    has_legacy = config.SPOTIFY_PLAYLIST_IDS and "YOUR_" not in config.SPOTIFY_PLAYLIST_IDS[0]
+
+    if not has_mapping and not has_legacy:
+        log("❌ Error: Please add at least one Spotify playlist ID in config.py (either in PLAYLIST_MAPPING or SPOTIFY_PLAYLIST_IDS)")
         return
     
     # Connect to both services
