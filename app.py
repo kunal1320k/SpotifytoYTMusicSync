@@ -492,7 +492,7 @@ def create_ytmusic_playlist_interactive():
 def auto_create_menu():
     """Submenu for auto-creating YouTube Music playlists."""
     while True:
-        print_header("AUTO-CREATE YOUTUBE MUSIC PLAYLISTS")
+        print_header("AUTO-CREATE YOUTUBE MUSIC PLAYLISTS----DOESN'T WORK")
         
         print("This feature will:")
         print("  1. Fetch all your Spotify playlists")
@@ -772,3 +772,4 @@ if __name__ == "__main__":
         main_menu()
     except KeyboardInterrupt:
         print("\n\nGoodbye!")
+
