@@ -1,16 +1,16 @@
 How to use :
-git clone https://github.com/yourusername/SpotifytoYTMusicSync.git
-cd SpotifytoYTMusicSync
-pip install -r requirements.txt
-cp config.example.py config.py
-Then, Run app.py
-    1. setup spotify  --> to check go to manage playlist--->view spotify playlist
-    2. setup ytmusic  --> same for this 
-    3. Map the playlist --> little labour work
-    OR
-    3. Auto Create playlist
-    4. Dry sync run
-    5. Main Sync
+* git clone https://github.com/yourusername/SpotifytoYTMusicSync.git
+* cd SpotifytoYTMusicSync
+* pip install -r requirements.txt
+* cp config.example.py config.py
+* Then, Run app.py
+    * 1. setup spotify  --> to check go to manage playlist--->view spotify playlist
+    * 2. setup ytmusic  --> same for this 
+    * 3. Map the playlist --> little labour work
+    * OR
+    * 3. Auto Create playlist
+    * 4. Dry sync run
+    * 5. Main Sync
 
 =====================================================================================
 # Spotify to YouTube Music Sync
@@ -117,4 +117,5 @@ These files contain your credentials and are git-ignored:
 - `browser_auth.json` - YouTube cookies
 
 **Never commit these files!**
+
 
