@@ -1,3 +1,5 @@
+what i found is the algorithm has very high accuracy 
+
 How to use :
 * git clone https://github.com/kunal-1320/SpotifytoYTMusicSync.git
 * cd SpotifytoYTMusicSync
@@ -124,6 +126,7 @@ These files contain your credentials and are git-ignored:
 - `browser_auth.json` - YouTube cookies
 
 **Never commit these files!**
+
 
 
 
