@@ -15,9 +15,9 @@ How to use :
 NOTE : youtubemus request headers get expired automatically so when you want you can setup ytmusic again
 
 FUTURE UPDATE:
-1. STATUS if request header is expired
-2. playlist mapping validation can't differentiate between request header auth expiration and missing playlist.( so it removes the mapping no matter what)
-3. I still don't know request header thing works on chrome or not ( currently using firefox)
+1. STATUS if request header is expired   (DONE I guess)
+2. playlist mapping validation can't differentiate between request header auth expiration and missing playlist.( so it removes the mapping no matter what)  (IDK IG DONE)
+3. I still don't know request header thing works on chrome or not ( currently using firefox) (NOT DONE)
 
 =====================================================================================
 # Spotify to YouTube Music Sync
@@ -124,6 +124,7 @@ These files contain your credentials and are git-ignored:
 - `browser_auth.json` - YouTube cookies
 
 **Never commit these files!**
+
 
 
 
