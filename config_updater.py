@@ -182,9 +182,14 @@ def append_playlist_mappings(new_mappings: Dict[str, str]) -> int:
             continue
         
         # Check if already exists to avoid duplicates
-        if f'"{sp_id}"' not in existing_entries:
+        # Use regex to find if it exists as an active (uncommented) mapping
+        # This prevents collisions with comments or inactive mappings
+        id_pattern = rf'^\s*"{re.escape(sp_id)}"\s*:'
+        if not re.search(id_pattern, existing_entries, re.MULTILINE):
             new_entries_str += f'\n    "{sp_id}": "{yt_id}",'
             added_count += 1
+        else:
+            print(f"  Note: Mapping for {sp_id} already exists in config.py")
     
     if not new_entries_str:
         return 0  # Nothing to add
@@ -257,7 +262,7 @@ if __name__ == "__main__":
     print("1. Testing validate_playlist_id:")
     print(f"   Valid Spotify ID: {validate_playlist_id('37i9dQZF1DXcBWIGoYBM5M', 'spotify')}")
     print(f"   Invalid Spotify ID: {validate_playlist_id('abc', 'spotify')}")
-    print(f"   Valid YTMusic ID: {validate_playlist_id('PLY3LuyWhQkjoEvyml9yoPi8IOsXQNjE8f', 'ytmusic')}")
+    print(f"   Valid YTMusic ID: {validate_playlist_id('PLY3LuyWhQkjoEvyml9yoPi8IOsXQNjE8f_EXAMPLE', 'ytmusic')}")
     print()
     
     # Test get_unmapped_playlists

@@ -26,6 +26,9 @@ def get_spotify_client():
         import spotipy
         from spotipy.oauth2 import SpotifyOAuth
         import config
+        import importlib
+        # Reload config to get latest credentials
+        importlib.reload(config)
     except ImportError as e:
         raise ImportError(f"Required package not installed: {e}")
     
@@ -97,18 +100,31 @@ def test_ytmusic_connection() -> tuple:
     Test YouTube Music connection.
     
     Returns:
-        Tuple of (success: bool, message: str)
+        Tuple of (success: bool, message: str, error_type: str)
+        error_type can be: 'none', 'auth', 'network', 'unknown'
     """
     try:
         ytm = get_ytmusic_client()
         # Try a simple search to verify the connection works
         result = ytm.search('test', filter='songs', limit=1)
         if result:
-            return (True, "YouTube Music connected and working!")
+            return (True, "YouTube Music connected and working!", 'none')
         else:
-            return (True, "Connected but no search results (may still work)")
+            return (True, "Connected but no search results (may still work)", 'none')
+    except FileNotFoundError as e:
+        return (False, str(e), 'auth')
     except Exception as e:
-        return (False, str(e))
+        error_str = str(e).lower()
+        
+        # Check for authentication errors
+        if '401' in error_str or 'unauthorized' in error_str or 'authentication' in error_str:
+            return (False, "YouTube Music headers have expired. Please re-run: python setup_browser_auth.py", 'auth')
+        
+        # Network errors
+        if 'network' in error_str or 'connection' in error_str:
+            return (False, str(e), 'network')
+        
+        return (False, str(e), 'unknown')
 
 
 def check_spotify_configured() -> bool:
@@ -147,5 +163,5 @@ if __name__ == "__main__":
         print(f"Spotify connection: {'OK' if success else 'FAILED'} - {msg}")
     
     if check_ytmusic_configured():
-        success, msg = test_ytmusic_connection()
+        success, msg, error_type = test_ytmusic_connection()
         print(f"YouTube Music connection: {'OK' if success else 'FAILED'} - {msg}")

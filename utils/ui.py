@@ -64,11 +64,14 @@ def safe_print(message: str):
     Args:
         message: Text to print (may contain Unicode/emoji)
     """
+    import sys
     try:
         print(message)
     except UnicodeEncodeError:
-        # Replace problematic characters with ASCII alternatives
-        safe = message.encode('ascii', errors='replace').decode('ascii')
+        # Windows console (cp1252) can't handle emojis and some Unicode
+        # Replace problematic characters with '?'
+        encoding = sys.stdout.encoding or 'utf-8'
+        safe = message.encode(encoding, errors='replace').decode(encoding)
         print(safe)
 
 

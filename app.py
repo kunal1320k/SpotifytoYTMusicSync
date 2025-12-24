@@ -44,11 +44,15 @@ def get_playlist_mapping():
 
 def ensure_config_exists():
     """Ensure config.py exists, create from example if needed."""
+    import shutil
     if not os.path.exists("config.py"):
         if os.path.exists("config.example.py"):
-            import shutil
             shutil.copy("config.example.py", "config.py")
+            print_info("Created config.py from config.example.py")
             return True
+        else:
+            print_error("config.example.py not found!")
+            return False
     return os.path.exists("config.py")
 
 
@@ -87,7 +91,7 @@ def setup_spotify():
     try:
         ensure_config_exists()
         
-        with open("config.py", "r") as f:
+        with open("config.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         import re
@@ -102,8 +106,13 @@ def setup_spotify():
             content
         )
         
-        with open("config.py", "w") as f:
+        with open("config.py", "w", encoding="utf-8") as f:
             f.write(content)
+        
+        # Force reload config module to pick up new values
+        import importlib
+        import config
+        importlib.reload(config)
         
         print_success("Spotify credentials saved!")
         
@@ -180,7 +189,7 @@ def setup_ytmusic():
         
         # Test connection
         print_info("Testing YouTube Music connection...")
-        success, msg = test_ytmusic_connection()
+        success, msg, error_type = test_ytmusic_connection()
         if success:
             print_success(msg)
         else:
@@ -223,12 +232,13 @@ def manage_playlists():
             "Add new playlist mapping",
             "Remove a playlist mapping",
             "Validate mappings (find broken ones)",
+            "Check YouTube Music headers status",
             "View Spotify playlists",
             "View YouTube Music playlists",
             "Create YouTube Music playlist",
         ])
         
-        choice = get_choice(6)
+        choice = get_choice(7)
         
         if choice == 0:
             break
@@ -239,35 +249,214 @@ def manage_playlists():
         elif choice == 3:
             validate_mappings()
         elif choice == 4:
-            view_spotify_playlists()
+            check_ytmusic_headers_status()
         elif choice == 5:
-            view_ytmusic_playlists()
+            view_spotify_playlists()
         elif choice == 6:
+            view_ytmusic_playlists()
+        elif choice == 7:
             create_ytmusic_playlist_interactive()
 
 
 def add_playlist_mapping():
-    """Add a new playlist mapping."""
+    """Add a new playlist mapping with interactive selection."""
     print_header("ADD PLAYLIST MAPPING")
+    
+    print("How would you like to add the mapping?")
+    print()
+    print_menu([
+        "Select from my playlists (easy - numbered list)",
+        "Enter IDs manually (for public/shared playlists)"
+    ])
+    
+    choice = get_choice(2)
+    if choice == 0:
+        return
+    
+    if choice == 1:
+        # Interactive selection from user's playlists
+        add_playlist_mapping_interactive()
+    else:
+        # Manual ID entry
+        add_playlist_mapping_manual()
+
+
+def add_playlist_mapping_interactive():
+    """Add mapping by selecting from numbered lists."""
+    print_header("SELECT PLAYLISTS TO MAP")
+    
+    # Check if services are configured
+    if not check_spotify_configured():
+        print_error("Spotify not configured!")
+        print_info("Please set up Spotify first from the main menu.")
+        pause()
+        return
+    
+    if not check_ytmusic_configured():
+        print_error("YouTube Music not configured!")
+        print_info("Please set up YouTube Music first from the main menu.")
+        pause()
+        return
+    
+    # Fetch Spotify playlists
+    print_info("Fetching your Spotify playlists...")
+    try:
+        sp = get_spotify_client()
+        spotify_playlists = []
+        results = sp.current_user_playlists(limit=50)
+        while results:
+            spotify_playlists.extend(results['items'])
+            if results['next']:
+                results = sp.next(results)
+            else:
+                break
+    except Exception as e:
+        print_error(f"Failed to fetch Spotify playlists: {e}")
+        pause()
+        return
+    
+    # Fetch YouTube Music playlists
+    print_info("Fetching your YouTube Music playlists...")
+    try:
+        ytm = get_ytmusic_client()
+        yt_playlists = ytm.get_library_playlists(limit=100)
+    except Exception as e:
+        print_error(f"Failed to fetch YouTube Music playlists: {e}")
+        pause()
+        return
+    
+    if not spotify_playlists:
+        print_error("No Spotify playlists found!")
+        pause()
+        return
+    
+    if not yt_playlists:
+        print_error("No YouTube Music playlists found!")
+        pause()
+        return
+    
+    # Show Spotify playlists
+    print()
+    print_success(f"Your Spotify Playlists ({len(spotify_playlists)} total):")
+    print_divider()
+    for i, pl in enumerate(spotify_playlists, 1):
+        safe_print(f"  [{i}] {pl['name']}")
+        if i >= 20 and len(spotify_playlists) > 20:
+            print(f"  ... and {len(spotify_playlists) - 20} more")
+            break
+    print()
+    
+    # Select Spotify playlist
+    try:
+        sp_choice = int(input(f"Select Spotify playlist (1-{min(len(spotify_playlists), 20)}, 0 to cancel): ").strip())
+        if sp_choice == 0:
+            return
+        if sp_choice < 1 or sp_choice > min(len(spotify_playlists), 20):
+            print_error("Invalid selection!")
+            pause()
+            return
+        
+        selected_spotify = spotify_playlists[sp_choice - 1]
+        spotify_id = selected_spotify['id']
+        spotify_name = selected_spotify['name']
+    except (ValueError, IndexError):
+        print_error("Invalid input!")
+        pause()
+        return
+    
+    # Show YouTube Music playlists
+    print()
+    print_success(f"Your YouTube Music Playlists ({len(yt_playlists)} total):")
+    print_divider()
+    for i, pl in enumerate(yt_playlists, 1):
+        safe_print(f"  [{i}] {pl.get('title', 'Unknown')}")
+        if i >= 20 and len(yt_playlists) > 20:
+            print(f"  ... and {len(yt_playlists) - 20} more")
+            break
+    print()
+    
+    # Select YouTube Music playlist
+    try:
+        yt_choice = int(input(f"Select YouTube Music playlist (1-{min(len(yt_playlists), 20)}, 0 to cancel): ").strip())
+        if yt_choice == 0:
+            return
+        if yt_choice < 1 or yt_choice > min(len(yt_playlists), 20):
+            print_error("Invalid selection!")
+            pause()
+            return
+        
+        selected_yt = yt_playlists[yt_choice - 1]
+        ytmusic_id = selected_yt.get('playlistId')
+        ytmusic_name = selected_yt.get('title', 'Unknown')
+    except (ValueError, IndexError):
+        print_error("Invalid input!")
+        pause()
+        return
+    
+    # Confirm mapping
+    print()
+    print_divider()
+    print("You are mapping:")
+    safe_print(f"  {Colors.BOLD}Spotify:{Colors.RESET} {spotify_name}")
+    print(f"  {Colors.DIM}ID: {spotify_id}{Colors.RESET}")
+    print()
+    safe_print(f"  {Colors.BOLD}YouTube Music:{Colors.RESET} {ytmusic_name}")
+    print(f"  {Colors.DIM}ID: {ytmusic_id}{Colors.RESET}")
+    print_divider()
+    print()
+    
+    confirm = input("Add this mapping? (y/n): ").strip().lower()
+    if confirm != 'y':
+        print_warning("Cancelled.")
+        pause()
+        return
+    
+    # Add to config using the safe config_updater
+    try:
+        from config_updater import append_playlist_mappings
+        new_mappings = {spotify_id: ytmusic_id}
+        added = append_playlist_mappings(new_mappings)
+        
+        if added > 0:
+            print_success("Mapping added!")
+            safe_print(f"   {spotify_name} → {ytmusic_name}")
+        else:
+            print_error("Failed to add mapping to config.py")
+    except Exception as e:
+        print_error(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    pause()
+
+
+def add_playlist_mapping_manual():
+    """Add mapping by manually entering IDs (for public playlists)."""
+    print_header("MANUAL PLAYLIST MAPPING", "For public or shared playlists")
     
     print_box([
         "Spotify ID: From playlist URL after /playlist/",
         "YT Music ID: From playlist URL after ?list= (starts with PL)"
     ], "How to find IDs")
     print()
+    print()
     
     spotify_id = input("Spotify Playlist ID: ").strip()
     if not spotify_id:
+        print_warning("Cancelled.")
+        pause()
         return
     
     ytmusic_id = input("YouTube Music Playlist ID: ").strip()
     if not ytmusic_id:
+        print_warning("Cancelled.")
+        pause()
         return
     
     try:
         ensure_config_exists()
         
-        with open("config.py", "r") as f:
+        with open("config.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         import re
@@ -280,7 +469,7 @@ def add_playlist_mapping():
             new_mapping = old_mapping + new_entry
             content = content.replace(old_mapping, new_mapping)
             
-            with open("config.py", "w") as f:
+            with open("config.py", "w", encoding="utf-8") as f:
                 f.write(content)
             
             print_success("Mapping added!")
@@ -303,35 +492,132 @@ def remove_playlist_mapping():
         return
     
     print_header("REMOVE PLAYLIST MAPPING")
-    print("Select a mapping to remove:")
+    print_info("Fetching playlist names...")
     print()
     
-    items = list(mapping.items())
-    for i, (sp_id, yt_id) in enumerate(items, 1):
-        print(f"  [{i}] {sp_id[:40]}...")
-    print("  [0] Cancel")
-    print()
+    # Fetch playlist names
+    items = []
+    try:
+        sp = get_spotify_client()
+        ytm = get_ytmusic_client()
+        
+        for sp_id, yt_id in mapping.items():
+            # Get Spotify name
+            try:
+                sp_playlist = sp.playlist(sp_id, fields="name")
+                sp_name = sp_playlist['name']
+            except:
+                sp_name = f"[Error: {sp_id[:20]}...]"
+            
+            # Get YTMusic name
+            try:
+                yt_playlist = ytm.get_playlist(yt_id, limit=0)
+                yt_name = yt_playlist.get('title', 'Unknown')
+            except:
+                yt_name = f"[Error: {yt_id[:20]}...]"
+            
+            items.append((sp_id, yt_id, sp_name, yt_name))
+        
+        # Display mappings with names
+        print("Select mapping to remove:")
+        print_divider()
+        for i, (sp_id, yt_id, sp_name, yt_name) in enumerate(items, 1):
+            safe_print(f"  {Colors.CYAN}[{i}]{Colors.RESET} {sp_name} → {yt_name}")
+            print(f"      {Colors.DIM}{sp_id} → {yt_id}{Colors.RESET}")
+        print("  [0] Cancel")
+        print()
+        
+    except Exception as e:
+        print_error(f"Error fetching names: {e}")
+        print()
+        items = [(sp_id, yt_id, sp_id[:30], yt_id[:30]) for sp_id, yt_id in mapping.items()]
+        for i, (sp_id, _, _, _) in enumerate(items, 1):
+            print(f"  [{i}] {sp_id[:40]}...")
+        print("  [0] Cancel")
+        print()
     
     choice = get_choice(len(items))
     if choice == 0:
         return
     
-    sp_id_to_remove = items[choice - 1][0]
+    sp_id_to_remove, _, sp_name, yt_name = items[choice - 1]
     
     try:
-        with open("config.py", "r") as f:
+        with open("config.py", "r", encoding="utf-8") as f:
             content = f.read()
         
         import re
         pattern = rf'\s*"{re.escape(sp_id_to_remove)}"\s*:\s*"[^"]*"\s*,?\s*\n?'
         content = re.sub(pattern, '\n', content)
         
-        with open("config.py", "w") as f:
+        with open("config.py", "w", encoding="utf-8") as f:
             f.write(content)
         
-        print_success(f"Removed: {sp_id_to_remove[:40]}...")
+        print_success(f"Removed: {sp_name}")
     except Exception as e:
         print_error(str(e))
+    
+    pause()
+
+
+def check_ytmusic_headers_status():
+    """Check if YouTube Music headers are still valid."""
+    print_header("YOUTUBE MUSIC HEADERS STATUS", "Check authentication validity")
+    
+    if not check_ytmusic_configured():
+        print_error("YouTube Music not configured!")
+        print_info("Run: python setup_browser_auth.py")
+        pause()
+        return
+    
+    print_info("Testing YouTube Music authentication...")
+    print()
+    
+    try:
+        from utils.ytmusic_validator import check_ytmusic_auth
+        is_valid, message, error_type = check_ytmusic_auth()
+        
+        print_divider()
+        if is_valid:
+            print_success("✅ YouTube Music Headers: VALID")
+            print()
+            safe_print(f"  {Colors.GREEN}Your authentication is working correctly!{Colors.RESET}")
+            print(f"  You can sync playlists without any issues.")
+        else:
+            if error_type == 'missing':
+                print_error("❌ YouTube Music Headers: NOT CONFIGURED")
+                print()
+                safe_print(f"  {Colors.RED}Headers file (browser_auth.json) not found.{Colors.RESET}")
+                print()
+                print_warning("Action Required:")
+                print("  1. Run: python setup_browser_auth.py")
+                print("  2. Follow the instructions to configure headers")
+                print("  3. Paste the request headers when prompted")
+            elif error_type == 'expired':
+                print_error("❌ YouTube Music Headers: EXPIRED")
+                print()
+                safe_print(f"  {Colors.RED}Your authentication headers have EXPIRED.{Colors.RESET}")
+                print()
+                print_warning("Action Required:")
+                print("  1. Run: python setup_browser_auth.py")
+                print("  2. Follow the instructions to get NEW headers")
+                print("  3. Paste the new headers when prompted")
+            elif error_type == 'network':
+                print_warning("⚠️  YouTube Music Headers: NETWORK ERROR")
+                print()
+                print(f"  {message}")
+                print()
+                print_info("Check your internet connection and try again.")
+            else:
+                print_warning("⚠️  YouTube Music Headers: UNKNOWN STATUS")
+                print()
+                print(f"  {message}")
+        print_divider()
+        
+    except Exception as e:
+        print_error(f"Error checking headers: {e}")
+        import traceback
+        traceback.print_exc()
     
     pause()
 
@@ -355,43 +641,53 @@ def validate_mappings():
     print()
     
     try:
-        ytm = get_ytmusic_client()
+        # First check authentication
+        from utils.ytmusic_validator import check_ytmusic_auth
+        auth_valid, auth_msg, error_type = check_ytmusic_auth()
         
-        # Get user's YTMusic playlists
-        print_info("Fetching your YouTube Music playlists...")
-        yt_playlists = ytm.get_library_playlists(limit=100)
-        valid_yt_ids = set()
-        if yt_playlists:
-            for pl in yt_playlists:
-                if pl and pl.get('playlistId'):
-                    valid_yt_ids.add(pl['playlistId'])
-        
-        # Check each mapping
-        broken_mappings = []
-        valid_count = 0
-        
-        for sp_id, yt_id in mapping.items():
-            if yt_id in valid_yt_ids:
-                valid_count += 1
+        if not auth_valid and error_type in ('expired', 'missing'):
+            if error_type == 'expired':
+                print_error("YouTube Music headers have EXPIRED!")
             else:
-                # Try to fetch the playlist directly to confirm it's broken
-                try:
-                    ytm.get_playlist(yt_id, limit=1)
-                    valid_count += 1
-                    valid_yt_ids.add(yt_id)
-                except Exception:
-                    broken_mappings.append((sp_id, yt_id))
+                print_error("YouTube Music headers NOT CONFIGURED!")
+            print_warning(auth_msg)
+            print()
+            print_info("Cannot validate mappings without valid authentication.")
+            if error_type == 'expired':
+                print_info("Your headers have expired - please refresh them.")
+            print_info("Please run: python setup_browser_auth.py")
+            pause()
+            return
+        
+        # Auth is valid, proceed with validation
+        ytm = get_ytmusic_client()
+        from utils.ytmusic_validator import validate_all_playlists
+        
+        print_info("Validating playlist access...")
+        results = validate_all_playlists(ytm, mapping)
         
         print()
         print_divider()
-        print_success(f"Valid mappings: {valid_count}")
+        print_success(f"Valid mappings: {len(results['valid'])}")
         
-        if broken_mappings:
-            print_warning(f"Broken mappings: {len(broken_mappings)}")
-            print()
-            print("The following YouTube Music playlists no longer exist:")
+        # Show auth errors separately
+        if results['auth_errors']:
+            print_warning(f"Auth errors: {len(results['auth_errors'])}")
+            print("\nThe following mappings have authentication errors:")
             print_divider()
-            for sp_id, yt_id in broken_mappings:
+            for sp_id, yt_id in results['auth_errors']:
+                safe_print(f"  Spotify: {sp_id[:35]}...")
+                safe_print(f"  YTMusic: {Colors.YELLOW}{yt_id}{Colors.RESET} (AUTH ERROR)")
+                print()
+            print_info("These might be temporary - headers may be partially expired.")
+            print()
+        
+        # Show missing playlists
+        if results['missing']:
+            print_warning(f"Missing playlists: {len(results['missing'])}")
+            print("\nThe following YouTube Music playlists no longer exist:")
+            print_divider()
+            for sp_id, yt_id in results['missing']:
                 safe_print(f"  Spotify: {sp_id[:35]}...")
                 safe_print(f"  YTMusic: {Colors.RED}{yt_id}{Colors.RESET} (NOT FOUND)")
                 print()
@@ -399,14 +695,21 @@ def validate_mappings():
             confirm = input("Remove these broken mappings from config? (y/n): ").strip().lower()
             if confirm == 'y':
                 from config_updater import remove_playlist_mappings
-                sp_ids_to_remove = [sp_id for sp_id, _ in broken_mappings]
+                sp_ids_to_remove = [sp_id for sp_id, _ in results['missing']]
                 removed = remove_playlist_mappings(sp_ids_to_remove)
                 print_success(f"Removed {removed} broken mappings!")
                 print_info("Backup saved as config.py.backup")
             else:
                 print_info("No changes made.")
-        else:
+        elif not results['auth_errors']:
             print_success("All mappings are valid!")
+        
+        # Show unknown errors
+        if results['unknown_errors']:
+            print_warning(f"Unknown errors: {len(results['unknown_errors'])}")
+            for sp_id, yt_id, err_msg in results['unknown_errors']:
+                safe_print(f"  {sp_id[:35]}... -> {yt_id}")
+                print(f"    Error: {err_msg}")
         
     except Exception as e:
         print_error(str(e))
@@ -675,19 +978,127 @@ def show_status():
     ytmusic_ok = check_ytmusic_configured()
     playlists = get_playlist_mapping()
     
+    # Check YTMusic header validity
+    ytmusic_auth_valid = False
+    ytmusic_status_msg = "Not configured"
+    if ytmusic_ok:
+        try:
+            from utils.ytmusic_validator import check_ytmusic_auth
+            is_valid, message, error_type = check_ytmusic_auth()
+            ytmusic_auth_valid = is_valid
+            if is_valid:
+                ytmusic_status_msg = "Valid"
+            elif error_type == 'expired':
+                ytmusic_status_msg = "*** EXPIRED - REFRESH HEADERS ***"
+            elif error_type == 'missing':
+                ytmusic_status_msg = "*** NOT CONFIGURED ***"
+            else:
+                ytmusic_status_msg = "Unknown error"
+        except:
+            ytmusic_status_msg = "Unknown"
+            ytmusic_auth_valid = True  # Assume valid if can't check
+    
+    # Get last sync time
+    last_sync_msg = "Never"
+    try:
+        import os
+        from datetime import datetime
+        if os.path.exists("sync_log.txt"):
+            with open("sync_log.txt", "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                for line in reversed(lines):
+                    if "SYNC STARTED" in line or "SYNC COMPLETE" in line:
+                        # Extract timestamp from log line
+                        if line.startswith("["):
+                            timestamp_str = line[1:20]  # [2025-12-24 19:30:03]
+                            try:
+                                log_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                                now = datetime.now()
+                                diff = now - log_time
+                                
+                                if diff.days > 0:
+                                    last_sync_msg = f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+                                elif diff.seconds >= 3600:
+                                    hours = diff.seconds // 3600
+                                    last_sync_msg = f"{hours} hour{'s' if hours > 1 else ''} ago"
+                                elif diff.seconds >= 60:
+                                    minutes = diff.seconds // 60
+                                    last_sync_msg = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+                                else:
+                                    last_sync_msg = "Just now"
+                            except:
+                                pass
+                        break
+    except:
+        pass
+    
     print("Current Status:")
     print_divider()
     print_status("Spotify", spotify_ok)
-    print_status("YouTube Music", ytmusic_ok)
+    
+    # Show YTMusic status with header validity
+    if ytmusic_ok:
+        if ytmusic_auth_valid:
+            print_status("YouTube Music", True)
+            safe_print(f"  {Colors.DIM}Headers: {Colors.GREEN}{ytmusic_status_msg}{Colors.RESET}")
+        else:
+            safe_print(f"  YouTube Music: {Colors.RED}✗{Colors.RESET}")
+            safe_print(f"  {Colors.RED}{Colors.BOLD}STATUS: {ytmusic_status_msg}{Colors.RESET}")
+            print(f"  {Colors.YELLOW}Action: Run 'python setup_browser_auth.py'{Colors.RESET}")
+    else:
+        print_status("YouTube Music", False)
+    
     print(f"  Playlists: {len(playlists)} mapped")
+    print(f"  {Colors.DIM}Last sync: {last_sync_msg}{Colors.RESET}")
     print()
     
-    return spotify_ok, ytmusic_ok
+    return spotify_ok, ytmusic_ok and ytmusic_auth_valid
+
+
+def show_welcome_if_needed():
+    """Show welcome screen for first-time users."""
+    # Check if this is first run (no credentials configured)
+    if not check_spotify_configured() or not check_ytmusic_configured():
+        print_header("WELCOME TO SPOTIFY → YOUTUBE MUSIC SYNC!", "Your music, synced effortlessly")
+        
+        print_box([
+            "This tool syncs your Spotify playlists to YouTube Music automatically!",
+            "",
+            "Quick Setup (2 minutes):",
+            "  1. Configure Spotify credentials",
+            "  2. Setup YouTube Music headers",
+            "  3. Map your playlists",
+            "  4. Run your first sync!"
+        ], "Getting Started")
+        print()
+        
+        spotify_ok = check_spotify_configured()
+        ytmusic_ok = check_ytmusic_configured()
+        
+        print("Setup Status:")
+        print_divider()
+        if not spotify_ok:
+            safe_print(f"  {Colors.RED}✗{Colors.RESET} Spotify  {Colors.DIM}→ Select 'Setup Spotify' below{Colors.RESET}")
+        else:
+            safe_print(f"  {Colors.GREEN}✓{Colors.RESET} Spotify  {Colors.DIM}(configured){Colors.RESET}")
+        
+        if not ytmusic_ok:
+            safe_print(f"  {Colors.RED}✗{Colors.RESET} YouTube Music  {Colors.DIM}→ Select 'Setup YouTube Music' below{Colors.RESET}")
+        else:
+            safe_print(f"  {Colors.GREEN}✓{Colors.RESET} YouTube Music  {Colors.DIM}(configured){Colors.RESET}")
+        print()
+        
+        print_info("💡 Tip: Complete the setup steps below to get started!")
+        print()
+        pause()
 
 
 def main_menu():
     """Main application menu."""
     ensure_config_exists()
+    
+    # Show welcome screen for first-time users
+    show_welcome_if_needed()
     
     while True:
         print_header("SPOTIFY TO YOUTUBE MUSIC SYNC", 

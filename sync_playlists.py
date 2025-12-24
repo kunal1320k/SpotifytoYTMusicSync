@@ -387,6 +387,9 @@ def sync_playlists(dry_run: bool = False):
     Args:
         dry_run: If True, only show what would be synced without actually syncing
     """
+    from datetime import datetime
+    sync_start_time = datetime.now()
+    
     log("=" * 60)
     log(f"SYNC STARTED {'(DRY RUN)' if dry_run else ''}")
     log("=" * 60)
@@ -446,36 +449,77 @@ def sync_playlists(dry_run: bool = False):
     
     # Validate mappings - check if YT playlists still exist
     log("Validating playlist mappings...")
-    valid_playlists = []
-    broken_mappings = []
     
-    for spotify_id, yt_id in playlists_to_sync:
-        if not yt_id:
-            valid_playlists.append((spotify_id, yt_id))
-            continue
-        try:
-            # Try to access the playlist
-            ytm.get_playlist(yt_id, limit=1)
-            valid_playlists.append((spotify_id, yt_id))
-        except Exception:
-            broken_mappings.append((spotify_id, yt_id))
-    
-    if broken_mappings:
-        log(f"[!] Found {len(broken_mappings)} broken mapping(s) - YouTube playlists no longer exist:")
-        for sp_id, yt_id in broken_mappings:
-            log(f"    - Spotify: {sp_id[:30]}... -> YT: {yt_id} (REMOVED)")
+    # First, test YTMusic authentication
+    try:
+        from utils.ytmusic_validator import check_ytmusic_auth
+        auth_valid, auth_msg, error_type = check_ytmusic_auth()
         
-        # Auto-remove broken mappings from config
-        try:
-            from config_updater import remove_playlist_mappings
-            sp_ids_to_remove = [sp_id for sp_id, _ in broken_mappings]
-            removed = remove_playlist_mappings(sp_ids_to_remove)
-            log(f"[OK] Removed {removed} broken mapping(s) from config.py")
-        except Exception as e:
-            log(f"[!] Could not auto-remove from config: {e}")
-        log("")
-    
-    playlists_to_sync = valid_playlists
+        if not auth_valid and error_type in ('expired', 'missing'):
+            log("=" * 60)
+            if error_type == 'expired':
+                log("*** WARNING: YOUTUBE MUSIC AUTHENTICATION HAS EXPIRED! ***")
+            else:
+                log("*** WARNING: YOUTUBE MUSIC HEADERS NOT CONFIGURED! ***")
+            log("=" * 60)
+            log(f"    {auth_msg}")
+            log("    Skipping playlist validation to prevent incorrect mapping removal.")
+            log("    Please re-run: python setup_browser_auth.py")
+            log("=" * 60)
+            log("")
+            # Don't validate playlists if auth is broken - can't tell if playlists exist or not
+            playlists_to_sync = [(sp, yt) for sp, yt in playlists_to_sync]  # Keep all
+        else:
+            # Auth is valid, proceed with validation
+            from utils.ytmusic_validator import validate_all_playlists
+            
+            mapping = {sp_id: yt_id for sp_id, yt_id in playlists_to_sync}
+            validation_results = validate_all_playlists(ytm, mapping)
+            
+            valid_playlists = validation_results['valid']
+            broken_mappings = validation_results['missing']
+            auth_errors = validation_results['auth_errors']
+            unknown_errors = validation_results['unknown_errors']
+            
+            # Report results
+            if broken_mappings:
+                log(f"[!] Found {len(broken_mappings)} broken mapping(s) - YouTube playlists no longer exist:")
+                for sp_id, yt_id in broken_mappings:
+                    log(f"    - Spotify: {sp_id[:30]}... -> YT: {yt_id} (DELETED)")
+                log("    Use 'Validate mappings' in app.py to review and remove these.")
+                log("")
+            
+            if auth_errors:
+                log(f"[!] Found {len(auth_errors)} mapping(s) with authentication errors:")
+                for sp_id, yt_id in auth_errors:
+                    log(f"    - Spotify: {sp_id[:30]}... -> YT: {yt_id} (AUTH ERROR)")
+                log("    These mappings are preserved - headers may be expired.")
+                log("")
+            
+            if unknown_errors:
+                log(f"[!] Found {len(unknown_errors)} mapping(s) with unknown errors:")
+                for sp_id, yt_id, err_msg in unknown_errors:
+                    log(f"    - Spotify: {sp_id[:30]}... -> YT: {yt_id}")
+                    log(f"      Error: {err_msg}")
+                log("")
+            
+            # Use only valid playlists + auth errors (preserve auth errors)
+            # Exclude only genuinely broken playlists
+            playlists_to_sync = valid_playlists + auth_errors
+    except ImportError:
+        # Fallback to old behavior if validator not available
+        log("[!] Warning: ytmusic_validator not found, using legacy validation")
+        valid_playlists = []
+        for spotify_id, yt_id in playlists_to_sync:
+            if not yt_id:
+                valid_playlists.append((spotify_id, yt_id))
+                continue
+            try:
+                ytm.get_playlist(yt_id, limit=1)
+                valid_playlists.append((spotify_id, yt_id))
+            except Exception:
+                log(f"[!] Could not access playlist: {yt_id}")
+        playlists_to_sync = valid_playlists
     
     if not playlists_to_sync:
         log("[!] No valid playlists to sync.")
@@ -581,16 +625,36 @@ def sync_playlists(dry_run: bool = False):
     if not dry_run:
         save_sync_cache(sync_cache)
     
-    # Summary
+    # Calculate sync duration
+    from datetime import datetime
+    sync_end_time = datetime.now()
+    duration_seconds = (sync_end_time - sync_start_time).total_seconds()
+    duration_str = f"{int(duration_seconds // 60)}m {int(duration_seconds % 60)}s" if duration_seconds >= 60 else f"{int(duration_seconds)}s"
+    
+    # Summary with enhanced formatting
     log("\n" + "=" * 60)
-    log("SYNC SUMMARY" + (" (DRY RUN)" if dry_run else ""))
+    log("✓ SYNC COMPLETE!" if not dry_run else "DRY RUN COMPLETE!")
     log("=" * 60)
-    log(f"Total Spotify tracks: {total_spotify_tracks}")
-    log(f"Already synced:       {already_synced}")
-    log(f"Newly added:          {newly_added}")
-    log(f"Not found on YT:      {not_found}")
-    log(f"Errors:               {errors}")
+    log(f"Playlists processed: {len(playlists_to_sync)}")
+    log(f"Total tracks found:  {total_spotify_tracks}")
+    log("")
+    log(f"✓ Already synced:    {already_synced}")
+    log(f"+ Newly added:       {newly_added}")
+    if not_found > 0:
+        log(f"⚠ Not found on YT:  {not_found}")
+    if errors > 0:
+        log(f"✗ Errors:            {errors}")
+    log("")
+    log(f"Time taken: {duration_str}")
     log("=" * 60)
+    
+    # Show success tip
+    if not dry_run and newly_added > 0:
+        log("💡 Tip: Check your YouTube Music playlists to see the new songs!")
+    elif dry_run and newly_added > 0:
+        log(f"💡 Tip: Run without --dry-run to actually sync {newly_added} new songs!")
+    elif newly_added == 0 and not_found == 0:
+        log("✓ All your music is already synced!")
 
 
 # =============================================================================
