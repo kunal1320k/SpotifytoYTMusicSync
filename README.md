@@ -1,137 +1,90 @@
-what i found is, the algorithm has very high accuracy ( atleast eng hindi french etc ). I guess, I have added enough things 
-to work with.
+# Spotify to YouTube Music Sync 🎵 → 📺
 
-How to use :
-* git clone https://github.com/kunal-1320/SpotifytoYTMusicSync.git
-* cd SpotifytoYTMusicSync
-* pip install -r requirements.txt
+Sync your Spotify playlists to YouTube Music automatically with high accuracy.
 
-* Then, Run app.py
-    * 1. setup spotify  --> to check go to manage playlist --> view spotify playlist
-    * 2. setup ytmusic  --> same for this  
-    * 3. Map the playlist --> little labour work
-    OR
-    * 3. Auto Create playlist
-    * 4. Dry sync run
-    * 5. Main Sync
-     
-NOTE : youtubemusic request headers get expired automatically so when you want you can setup ytmusic again.
+## 🚀 Quick Start
 
-FUTURE UPDATE: (completed)
-1. a status if request header is expired   (DONE I guess)
-2. playlist mapping validation can't differentiate between request header auth expiration and missing playlist.( so it removes the mapping no matter what)  (IDK IG DONE)
-3. I still don't know request header thing works on chrome or not ( currently using firefox(copy request header)) (Fixed use copy as curl(bash) for chrome/brave )
+```bash
+# 1. Clone the repository
+git clone https://github.com/kunal-1320/SpotifytoYTMusicSync.git
+cd SpotifytoYTMusicSync
 
-=====================================================================================
-# Spotify to YouTube Music Sync
+# 2. Install dependencies
+pip install -r requirements.txt
 
-Sync your Spotify playlists to YouTube Music automatically.
+# 3. Create config file
+# Windows: copy config.example.py config.py
+# Mac/Linux: cp config.example.py config.py
 
-## Features
+# 4. Run the interactive menu
+python app.py
+```
 
-- **Simple Setup** - No Google Cloud project needed, just browser authentication
-- **Smart Sync** - Detects duplicates, skips already-synced songs
-- **Auto-validation** - Automatically removes broken playlist mappings
-- **Batch Sync** - Sync multiple playlists at once
-- **Dry Run** - Preview changes before syncing
+### 📋 Setup Steps in Interactive Menu:
+1.  **Setup Spotify** — Connect your Spotify account. (Verify: *Manage Playlists* -> *View Spotify Playlists*)
+2.  **Setup YTMusic** — Authenticate with YouTube Music. (Verify: *Manage Playlists* -> *View YT Music Playlists*)
+3.  **Map Playlists** — Manually link Spotify IDs to YT Music IDs **OR** use **Auto-Create Playlists**.
+4.  **Dry Run** — Preview the sync without making changes.
+5.  **Main Sync** — Start the actual transfer.
 
-## Requirements
+> [!NOTE]
+> YouTube Music request headers expire periodically. If authentication fails, simply run the YTMusic setup again.
+
+---
+
+## ✨ Features
+
+- **Smart Matching** — High accuracy algorithm (supports English, Hindi, French, and more).
+- **Simple Browser Auth** — No complex Google Cloud project setup required.
+- **Smart Sync** — Detects duplicates automatically and skips already-synced tracks.
+- **Auto-Validation** — Identifies broken mappings and differentiates between expired sessions vs. missing playlists.
+- **Batch Processing** — Sync multiple playlists in one go.
+- **Dry Run Mode** — See exactly what will happen before it happens.
+- **Chrome/Brave/Firefox Support** — Supports "Copy as cURL (bash)" for Chrome/Brave and "Copy Request Headers" for Firefox.
+
+## 🛠️ Requirements
 
 - Python 3.8+
-- Spotify account
-- YouTube Music account
+- Spotify account (Developer App)
+- YouTube Music account (Logged in via browser)
 
-## Installation
+## 📖 Detailed Setup
 
-```bash
-git clone https://github.com/yourusername/SpotifytoYTMusicSync.git
-cd SpotifytoYTMusicSync
-pip install -r requirements.txt
-```
+### 1. Spotify Developer Setup
+1.  Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
+2.  Create a new App.
+3.  Set the **Redirect URI** to: `http://127.0.0.1:8888/callback`.
+4.  Copy the **Client ID** and **Client Secret** into `config.py` (or enter them through the `app.py` menu).
 
-## Setup
+### 2. YouTube Music Setup
+Run `python setup_browser_auth.py` or use the option in `app.py`.
+- **Firefox:** Copy "Request Headers".
+- **Chrome/Brave:** Copy as "cURL (bash)".
 
-### 1. Create Config File
-in command prompt ---> same location in the directory
-```bash
-cp config.example.py config.py
-```
-
-### 2. Setup Spotify
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app
-3. Set Redirect URI to: `http://127.0.0.1:8888/callback`
-4. Copy Client ID and Secret to `config.py`   ---> also can be done from app.py
-
-### 3. Setup YouTube Music
----> can be also done from app.py
-```bash
-python setup_browser_auth.py
-```
-
-Follow the instructions to copy request headers from your browser. (use firefox, i haven't test from chrome/brave tho)
-
-### 4. Add Playlist Mappings
-
-Edit `config.py`:
-
+### 3. Playlist Mapping
+Edit `PLAYLIST_MAPPING` in `config.py`:
 ```python
 PLAYLIST_MAPPING = {
     "SPOTIFY_PLAYLIST_ID": "YTMUSIC_PLAYLIST_ID",
 }
 ```
+- **Spotify ID:** Found in the URL after `/playlist/[ID]`.
+- **YT Music ID:** Found in the URL after `?list=[ID]`.
 
-**Finding IDs:**  When you open you playlists in browser. 
-- Spotify: `https://open.spotify.com/playlist/[ID]`
-- YouTube Music: `https://music.youtube.com/playlist?list=[ID]`
+## 📂 Project Structure
 
-## Usage
+- `app.py` — The interactive control center.
+- `sync_playlists.py` — Core synchronization engine.
+- `setup_browser_auth.py` — Authentication helper for YT Music.
+- `config.py` — Your local configuration (Git-ignored).
+- `config_updater.py` — Manages automated updates to your config.
+- `utils/` — Logic for API clients, UI formatting, and validation.
 
-### Interactive Menu (Recommended)
+## 🔒 Security
+Your credentials are kept local and never shared.
+- `config.py` — Stores your API keys.
+- `browser_auth.json` — Stores YouTube session cookies.
+**Never commit these files to GitHub!** They are included in `.gitignore` by default.
 
-```bash
-python app.py
-```
-
-### Command Line
-
-```bash
-python sync_playlists.py --dry-run  # Preview
-python sync_playlists.py            # Sync
-```
-
-## Project Structure
-
-```
-SpotifytoYTMusicSync/
-├── app.py                 # Interactive menu
-├── sync_playlists.py      # Main sync script
-├── setup_browser_auth.py  # YouTube Music setup
-├── config.example.py      # Config template
-├── config_updater.py      # Config management
-├── utils/                 # Shared utilities
-└── requirements.txt
-```
-
-## Auto-Sync (Windows)
-
-1. Press `Win+R`, type `shell:startup`
-2. Copy `run_sync.bat` into the folder
-3. Playlists sync on every login
-
-## Security
-
-These files contain your credentials and are git-ignored:
-- `config.py` - Your API keys
-- `browser_auth.json` - YouTube cookies
-
-**Never commit these files!**
-
-
-
-
-
-
-
-
+---
+*Created with ❤️ for music lovers.*
