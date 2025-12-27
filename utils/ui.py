@@ -156,6 +156,38 @@ def get_choice(max_option: int, prompt: str = "Enter choice") -> int:
             print_error("Invalid input. Please enter a number.")
 
 
+def get_multiline_input(prompt: str = "Paste text (Press Enter twice to finish):") -> str:
+    """
+    Get multi-line input from user.
+    Stops when user enters two empty lines.
+    """
+    print(f"{prompt}")
+    print_divider()
+    
+    # Fix for macOS/Linux input() limitation if needed
+    try:
+        import readline
+    except ImportError:
+        pass
+        
+    lines = []
+    empty_count = 0
+    while True:
+        try:
+            line = input()
+            if line.strip() == "":
+                empty_count += 1
+                if empty_count >= 2:  # Two empty lines = done
+                    break
+            else:
+                empty_count = 0
+                lines.append(line)
+        except (EOFError, KeyboardInterrupt):
+            break
+            
+    return '\n'.join(lines)
+
+
 # =============================================================================
 # STATUS OUTPUT FUNCTIONS
 # =============================================================================

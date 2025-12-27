@@ -7,17 +7,22 @@ No Google Cloud project or OAuth setup needed.
 """
 
 import os
-import json
-# Fix for macOS input() limitation (max 1023 characters)
-import readline
+import sys
+
+# Add current directory to path for local imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from utils.auth_helper import parse_headers, validate_headers, save_browser_auth
+from utils.ui import (
+    clear_screen, print_header, print_divider, print_success, 
+    print_error, print_warning, print_info, get_multiline_input,
+    Colors, safe_print
+)
 
 def print_instructions():
     """Print detailed browser-specific instructions."""
-    print()
-    print("=" * 70)
-    print("  YOUTUBE MUSIC SETUP - Simple Browser Authentication")
-    print("=" * 70)
-    print()
+    print_header("YOUTUBE MUSIC SETUP", "Simple Browser Authentication")
+    
     print("This is EASY! Just follow the steps for your browser:")
     print()
     print("-" * 70)
@@ -51,56 +56,23 @@ def print_instructions():
     print("     • Right-click → Copy → Copy Request Headers")
     print("     • Done! That's it.")
     print()
-    print("  📌 CHROME / EDGE:")
+    print("  📌 CHROME / EDGE / ANY BROWSER:")
     print("     • Click on the 'browse' request")
-    print("     • In the 'Headers' tab on the right")
-    print("     • Scroll to 'Request Headers' section")
-    print("     • Select and copy EVERYTHING from 'accept: */*' to the end")
+    print("     • **BEST OPTION:** Right-click request -> Copy -> **Copy as cURL (bash)**")
+    print("     • Run this script and paste the whole thing.")
     print()
     print("=" * 70)
     print()
 
-def parse_headers(headers_text):
-    """Parse raw request headers into a dictionary."""
-    headers = {}
-    lines = headers_text.strip().split('\n')
-
-    for line in lines:
-        line = line.strip()
-        if ':' in line:
-            key, value = line.split(':', 1)
-            headers[key.strip().lower()] = value.strip()
-
-    return headers
-
 def main():
     print_instructions()
 
-    print("Paste your request headers below (then press Enter twice):")
-    print("-" * 70)
-
-    # Collect multi-line input
-    lines = []
-    empty_count = 0
-    while True:
-        try:
-            line = input()
-            if line.strip() == "":
-                empty_count += 1
-                if empty_count >= 2:  # Two empty lines = done
-                    break
-            else:
-                empty_count = 0
-                lines.append(line)
-        except EOFError:
-            break
-
-    headers_text = '\n'.join(lines)
+    headers_text = get_multiline_input("Paste your request headers below (then press Enter twice):")
 
     if not headers_text or len(headers_text) < 100:
         print()
-        print("❌ Error: Headers seem too short or empty.")
-        print("   Make sure you copied the full request headers.")
+        print_error("Headers seem too short or empty.")
+        print_info("Make sure you copied the full request headers.")
         input("\nPress Enter to exit...")
         return
 
@@ -108,68 +80,67 @@ def main():
     try:
         headers = parse_headers(headers_text)
 
-        # Verify we have the essential headers
-        if 'cookie' not in headers:
+        # Show what was extracted
+        print()
+        print("=" * 70)
+        print("EXTRACTED HEADERS:")
+        print("=" * 70)
+        
+        required = ['cookie', 'authorization', 'x-goog-authuser', 'x-goog-visitor-id']
+        all_good = True
+        
+        for key in required:
+            if key in headers:
+                preview = headers[key][:60] + "..." if len(headers[key]) > 60 else headers[key]
+                print(f"[OK] {key}: {preview}")
+            else:
+                print(f"[MISSING] {key}")
+                all_good = False
+        
+        print("=" * 70)
+        print()
+
+        if not all_good:
+            print_error("Missing required headers!")
             print()
-            print("❌ Error: No 'cookie' found in headers.")
-            print("   Make sure you copied the full request headers including the cookie.")
-            input("\nPress Enter to exit...")
+            print("Common issues:")
+            print("  1. x-goog-visitor-id is REQUIRED for playlist operations")
+            print("  2. Make sure you copied the COMPLETE cURL command")
+            print("  3. Make sure you're copying from music.youtube.com (not youtube.com)")
+            print("  4. Try copying from a different 'browse' POST request")
+            print("  5. Firefox 'Copy Request Headers' or Chrome 'Copy as cURL (bash)' work best")
+            print()
+            input("Press Enter to exit...")
             return
-
-        # Check if this looks like YouTube Music headers
-        if 'music.youtube.com' not in headers.get('origin', '') and \
-           'music.youtube.com' not in headers.get('referer', ''):
-            print()
-            print("⚠️  Warning: Headers don't seem to be from music.youtube.com")
-            print("   Make sure you're copying from YouTube MUSIC, not regular YouTube!")
-            print()
-            choice = input("Continue anyway? (y/N): ").strip().lower()
-            if choice != 'y':
-                return
-
-        # Create auth file with parsed headers
-        auth_data = {
-            "accept": headers.get("accept", "*/*"),
-            "accept-language": headers.get("accept-language", "en-US,en;q=0.9"),
-            "content-type": headers.get("content-type", "application/json"),
-            "cookie": headers["cookie"],
-            "user-agent": headers.get("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
-            "x-goog-authuser": headers.get("x-goog-authuser", "0"),
-            "origin": headers.get("origin", "https://music.youtube.com")
-        }
-
-        # Add optional headers if present
-        if "authorization" in headers:
-            auth_data["authorization"] = headers["authorization"]
-        if "x-goog-visitor-id" in headers:
-            auth_data["x-goog-visitor-id"] = headers["x-goog-visitor-id"]
-        if "referer" in headers:
-            auth_data["referer"] = headers["referer"]
 
         # Save to file
         auth_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_auth.json")
-        with open(auth_path, "w") as f:
-            json.dump(auth_data, f, indent=2)
+        save_browser_auth(headers, auth_path)
 
+        print_success("Headers saved to browser_auth.json")
         print()
-        print("✅ Headers saved to browser_auth.json")
-        print()
-        print("Testing connection...")
+        print_info("Testing connection...")
 
         # Test the connection with better error handling
         try:
             from ytmusicapi import YTMusic
             ytm = YTMusic(auth_path)
 
-            # Try a simple search first (more reliable than get_library_playlists)
+            # Test with actual playlist access (not just search)
             try:
-                search_result = ytm.search('test', filter='songs', limit=1)
-
-                if search_result and len(search_result) > 0:
+                # Try to get user's playlists - this requires proper auth
+                playlists = ytm.get_library_playlists(limit=1)
+                
+                if playlists is not None:  # Even empty list is success
                     print()
                     print("=" * 70)
-                    print("  ✅ SUCCESS! YouTube Music is connected and working!")
+                    print_success("SUCCESS! YouTube Music is connected and working!")
                     print("=" * 70)
+                    print()
+                    if playlists:
+                        print(f"  Found {len(playlists)} playlist(s) in your library.")
+                    else:
+                        print("  No playlists found (but authentication works!)")
                     print()
                     print("You can now:")
                     print("  • Run the main app: python app.py")
@@ -177,7 +148,7 @@ def main():
                     print()
                 else:
                     print()
-                    print("⚠️  Connection test completed, but results are unclear.")
+                    print_warning("Connection test completed, but results are unclear.")
                     print()
                     print("The headers are saved. Try running the sync to see if it works:")
                     print("  python sync_playlists.py --test-ytmusic")
@@ -186,18 +157,25 @@ def main():
                 error_str = str(search_error)
                 if "401" in error_str or "unauthorized" in error_str.lower():
                     print()
-                    print("❌ Authentication failed!")
+                    print_error("Authentication failed (401 Unauthorized)!")
                     print()
                     print("Common fixes:")
-                    print("  1. Make sure you copied from music.youtube.com (not youtube.com)")
-                    print("  2. Copy from a 'browse' POST request, not GET")
-                    print("  3. Make sure you're logged in to YouTube Music")
-                    print("  4. Try copying fresh headers (cookies expire)")
+                    print("  1. Missing x-goog-visitor-id header (REQUIRED for playlists)")
+                    print("  2. Make sure you copied from music.youtube.com (not youtube.com)")
+                    print("  3. Copy from a 'browse' POST request, not GET")
+                    print("  4. Make sure you're logged in to YouTube Music")
+                    print("  5. Try copying fresh headers (cookies expire)")
+                    print()
+                    if 'x-goog-visitor-id' not in headers:
+                        print_warning("DETECTED: x-goog-visitor-id is MISSING from your headers!")
+                        print("   This header is REQUIRED for playlist operations.")
+                        print("   Make sure you copy the FULL cURL command including ALL headers.")
                     print()
                 elif "400" in error_str or "bad request" in error_str.lower():
                     print()
-                    print("⚠️  Request format issue")
+                    print_warning("Request format issue")
                     print()
+                    # ... (rest of error handling same as before but using print_warning)
                     print("This usually means:")
                     print("  • Headers might be incomplete")
                     print("  • Try copying from a different 'browse' request")
@@ -205,7 +183,7 @@ def main():
                     print()
                 else:
                     print()
-                    print(f"⚠️  Connection test error: {search_error}")
+                    print_warning(f"Connection test error: {search_error}")
                     print()
                     print("Headers are saved, but verification failed.")
                     print("Try running the sync to see if it works anyway:")
@@ -214,18 +192,18 @@ def main():
 
         except ImportError:
             print()
-            print("❌ ytmusicapi not installed!")
+            print_error("ytmusicapi not installed!")
             print("   Run: pip install ytmusicapi")
         except Exception as e:
             print()
-            print(f"⚠️  Unexpected error: {e}")
+            print_warning(f"Unexpected error: {e}")
             print()
             print("Headers saved. Try testing with:")
             print("  python sync_playlists.py --test-ytmusic")
 
     except Exception as e:
         print()
-        print(f"❌ Error: {e}")
+        print_error(f"Error: {e}")
         print("   Something went wrong parsing the headers.")
         print("   Make sure you copied the raw request headers correctly.")
     print()

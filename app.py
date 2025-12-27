@@ -146,7 +146,7 @@ def setup_ytmusic():
         "  2. Press F12 > Network tab > filter 'browse'",
         "  3. Click 'Library' in YouTube Music",
         "  4. Find a POST request to 'browse?...'",
-        "  5. Copy the request headers"
+        "  5. Copy headers: Chrome (Copy as cURL bash) | Firefox (Copy Request Headers)"
     ])
     print()
     
@@ -157,25 +157,10 @@ def setup_ytmusic():
         pause()
         return False
     
-    print("\nPaste your request headers below (press Enter twice when done):")
-    print_divider()
     
-    lines = []
-    empty_count = 0
-    while True:
-        try:
-            line = input()
-            if line.strip() == "":
-                empty_count += 1
-                if empty_count >= 2:
-                    break
-            else:
-                empty_count = 0
-                lines.append(line)
-        except (EOFError, KeyboardInterrupt):
-            break
-    
-    headers_text = '\n'.join(lines)
+    # Use shared input helper
+    from utils.ui import get_multiline_input
+    headers_text = get_multiline_input("Paste your request headers below (press Enter twice when done):")
     
     if not headers_text or len(headers_text) < 100:
         print_error("Headers too short or empty. Cancelled.")
@@ -183,8 +168,29 @@ def setup_ytmusic():
         return False
     
     try:
-        from ytmusicapi import setup
-        setup(filepath='browser_auth.json', headers_raw=headers_text)
+        from utils.auth_helper import parse_headers, validate_headers, save_browser_auth
+        
+        headers = parse_headers(headers_text)
+        is_valid, missing = validate_headers(headers)
+
+        if not is_valid:
+            print_error("Missing required headers!")
+            possible_issues = []
+            if 'x-goog-visitor-id' in missing:
+                possible_issues.append("Missing x-goog-visitor-id (Required for playlists)")
+            if 'cookie' in missing:
+                possible_issues.append("Missing Cookie header")
+            
+            for issue in possible_issues:
+                print_warning(f"  • {issue}")
+            
+            print_info("Please ensure you copied the FULL cURL command or ALL headers.")
+            pause()
+            return False
+
+        # Save to file
+        save_browser_auth(headers, 'browser_auth.json')
+
         print_success("YouTube Music browser auth saved!")
         
         # Test connection
@@ -744,6 +750,29 @@ def view_ytmusic_playlists():
     """View user's YouTube Music playlists."""
     print_header("YOUR YOUTUBE MUSIC PLAYLISTS")
     
+    # First check if authentication is actually valid
+    if not check_ytmusic_configured():
+        print_error("YouTube Music not configured!")
+        print_info("Please run: python setup_browser_auth.py")
+        pause()
+        return
+    
+    # Verify auth is valid, not just that file exists
+    try:
+        from utils.ytmusic_validator import check_ytmusic_auth
+        is_valid, message, error_type = check_ytmusic_auth()
+        if not is_valid:
+            if error_type == 'expired':
+                print_error("YouTube Music headers have EXPIRED!")
+                print_warning("Your authentication is no longer valid.")
+            else:
+                print_error(f"Authentication error: {message}")
+            print_info("Please run: python setup_browser_auth.py to refresh")
+            pause()
+            return
+    except Exception as e:
+        print_warning(f"Could not verify auth: {e}")
+    
     try:
         ytm = get_ytmusic_client()
         playlists = ytm.get_library_playlists(limit=20)
@@ -759,7 +788,12 @@ def view_ytmusic_playlists():
         else:
             print_warning("No playlists found.")
     except Exception as e:
-        print_error(str(e))
+        error_str = str(e).lower()
+        if '401' in error_str or 'unauthorized' in error_str or 'not signed in' in error_str:
+            print_error("You are NOT signed in! Your authentication headers have expired.")
+            print_info("Please run: python setup_browser_auth.py to get fresh headers")
+        else:
+            print_error(str(e))
     
     pause()
 
@@ -767,6 +801,29 @@ def view_ytmusic_playlists():
 def create_ytmusic_playlist_interactive():
     """Create a new YouTube Music playlist."""
     print_header("CREATE YOUTUBE MUSIC PLAYLIST")
+    
+    # First check if authentication is actually valid
+    if not check_ytmusic_configured():
+        print_error("YouTube Music not configured!")
+        print_info("Please run: python setup_browser_auth.py")
+        pause()
+        return
+    
+    # Verify auth is valid, not just that file exists
+    try:
+        from utils.ytmusic_validator import check_ytmusic_auth
+        is_valid, message, error_type = check_ytmusic_auth()
+        if not is_valid:
+            if error_type == 'expired':
+                print_error("YouTube Music headers have EXPIRED!")
+                print_warning("Your authentication is no longer valid.")
+            else:
+                print_error(f"Authentication error: {message}")
+            print_info("Please run: python setup_browser_auth.py to refresh")
+            pause()
+            return
+    except Exception as e:
+        print_warning(f"Could not verify auth: {e}")
     
     playlist_name = input("Enter playlist name: ").strip()
     if not playlist_name:
@@ -801,7 +858,12 @@ def create_ytmusic_playlist_interactive():
         playlist_id = create_playlist(playlist_name, description, privacy_status)
         print_success(f"Created! ID: {playlist_id}")
     except Exception as e:
-        print_error(str(e))
+        error_str = str(e).lower()
+        if '401' in error_str or 'unauthorized' in error_str or 'not signed in' in error_str:
+            print_error("You are NOT signed in! Your authentication headers have expired.")
+            print_info("Please run: python setup_browser_auth.py to get fresh headers")
+        else:
+            print_error(str(e))
     
     pause()
 

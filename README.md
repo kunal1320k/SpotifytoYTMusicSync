@@ -1,24 +1,26 @@
-what i found is, the algorithm has very high accuracy ( atleast eng hindi french etc )
+what i found is, the algorithm has very high accuracy ( atleast eng hindi french etc ). I guess, I have added enough things 
+to work with.
 
 How to use :
 * git clone https://github.com/kunal-1320/SpotifytoYTMusicSync.git
 * cd SpotifytoYTMusicSync
-* pip install -r requirements.txt
+* pip install -r requirements.txt
+
 * Then, Run app.py
-    * 1. setup spotify  --> to check go to manage playlist--->view spotify playlist
-    * 2. setup ytmusic  --> same for this 
+    * 1. setup spotify  --> to check go to manage playlist --> view spotify playlist
+    * 2. setup ytmusic  --> same for this  
     * 3. Map the playlist --> little labour work
     OR
     * 3. Auto Create playlist
     * 4. Dry sync run
     * 5. Main Sync
      
-NOTE : youtubemus request headers get expired automatically so when you want you can setup ytmusic again
+NOTE : youtubemusic request headers get expired automatically so when you want you can setup ytmusic again.
 
-FUTURE UPDATE:
-1. STATUS if request header is expired   (DONE I guess)
+FUTURE UPDATE: (completed)
+1. a status if request header is expired   (DONE I guess)
 2. playlist mapping validation can't differentiate between request header auth expiration and missing playlist.( so it removes the mapping no matter what)  (IDK IG DONE)
-3. I still don't know request header thing works on chrome or not ( currently using firefox) (NOT DONE)
+3. I still don't know request header thing works on chrome or not ( currently using firefox(copy request header)) (Fixed use copy as curl(bash) for chrome/brave )
 
 =====================================================================================
 # Spotify to YouTube Music Sync
