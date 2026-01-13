@@ -122,9 +122,9 @@ def get_spotify_playlist_tracks(sp: spotipy.Spotify, playlist_id: str) -> list[d
         for item in results["items"]:
             track = item.get("track")
             if track and track.get("name") and track.get("id"):
-                # Get primary artist name
+                # Get primary artist name (safely handle None values)
                 artists = track.get("artists", [])
-                artist_name = artists[0]["name"] if artists else "Unknown"
+                artist_name = (artists[0].get("name") if artists and artists[0] else None) or "Unknown"
                 
                 tracks.append({
                     "id": track["id"],  # Spotify track ID for deduplication
@@ -239,7 +239,8 @@ def get_ytmusic_playlist_tracks(ytm: YTMusic, playlist_id: str) -> tuple[set[str
                 # Also get track name for fuzzy matching
                 if track.get("title"):
                     artists = track.get("artists", [])
-                    artist_name = artists[0]["name"] if artists else "Unknown"
+                    # Safe extraction: handle None and empty artist names
+                    artist_name = (artists[0].get("name") if artists and artists[0] else None) or "Unknown"
                     key = normalize_track_key(track["title"], artist_name)
                     track_names.add(key)
                     
@@ -265,6 +266,8 @@ def simple_track_match(spotify_name: str, spotify_artist: str, yt_tracks: list[d
     
     def clean_text(text: str) -> str:
         """Clean text for comparison."""
+        if not text:
+            return ""
         text = text.lower().strip()
         # Remove parenthetical content
         text = re.sub(r'\([^)]*\)', '', text)
@@ -349,6 +352,9 @@ def normalize_track_key(name: str, artist: str) -> str:
     import re
     
     def clean(text: str) -> str:
+        # Guard against None values
+        if not text:
+            return ""
         text = text.lower().strip()
         
         # Remove anything in parentheses or brackets
@@ -618,7 +624,9 @@ def sync_playlists(dry_run: bool = False):
                     newly_added -= len(songs_to_add)
                     
         except Exception as e:
+            import traceback
             log(f"[ERROR] Error processing playlist: {e}")
+            log(f"[DEBUG] Full traceback:\n{traceback.format_exc()}")
             errors += 1
     
     # Save sync cache
